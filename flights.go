@@ -24,6 +24,8 @@ type priceStruct struct {
 }
 
 type carrier struct {
+	departureDate string
+	arrivalDate   string
 	departureTime string
 	arrivalTime   string
 	airlineName   string
@@ -152,14 +154,8 @@ func jsonParserPrice(m map[string]interface{}, finalValue *string, fs *os.File) 
 		switch vv := value.(type) {
 		case string:
 			// fmt.Println(key, "is string")
-			if key == "cheapestRoundedUpPrice" {
-				*finalValue = vv
-			}
 		case int:
 			// fmt.Println(key, "is int")
-			if key == "cheapestRoundedUpPrice" {
-				*finalValue = strconv.Itoa(vv)
-			}
 		case float64:
 			// fmt.Println(key, "is float64")
 			if key == "cheapestRoundedUpPrice" {
@@ -167,9 +163,6 @@ func jsonParserPrice(m map[string]interface{}, finalValue *string, fs *os.File) 
 			}
 		case bool:
 			// fmt.Println(key, "is bool")
-			if key == "cheapestRoundedUpPrice" {
-				*finalValue = strconv.FormatBool(vv)
-			}
 		case []interface{}:
 			// fmt.Println(key, "is an array:")
 			for _, u := range vv {
@@ -320,17 +313,73 @@ func CheapestPriceDetails(l *[]interface{}, s *[]interface{}, fs *os.File) {
 			}
 		}
 	}
-	fmt.Println(cheapestID)
+	// fmt.Println(cheapestID)
 
 	var flightDetailsObj interface{}
 	for _, obj := range *l {
 		data := obj.(map[string]interface{})
-		for k := range data {
+		for k, v := range data {
 			if k == cheapestID {
-				flightDetailsObj = data
+				flightDetailsObj = v
 			}
 		}
 	}
-	fmt.Println(flightDetailsObj)
+	// fmt.Println(flightDetailsObj)
 
+	var cheapestFlight carrier
+	cheapestFlightPtr := &cheapestFlight
+
+	flightDetailsObjMap := flightDetailsObj.(map[string]interface{})
+	for key, value := range flightDetailsObjMap {
+		// fmt.Println(key)
+		if key == "departureTime" {
+			data := value.(map[string]interface{})
+			for k, v := range data {
+				if k == "date" {
+					cheapestFlightPtr.departureDate = v.(string)
+				}
+				if k == "time" {
+					cheapestFlightPtr.departureTime = v.(string)
+				}
+			}
+		}
+		if key == "arrivalTime" {
+			data := value.(map[string]interface{})
+			for k, v := range data {
+				if k == "date" {
+					cheapestFlightPtr.arrivalDate = v.(string)
+				}
+				if k == "time" {
+					cheapestFlightPtr.arrivalTime = v.(string)
+				}
+			}
+		}
+		if key == "timeline" {
+			data := value.([]interface{})
+			for index, v := range data {
+				if index == 0 {
+					for k, d := range v.(map[string]interface{}) {
+						if k == "carrier" {
+							obj := d.(map[string]interface{})
+							for i, j := range obj {
+								if i == "flightNumber" {
+									cheapestFlightPtr.flightNumber = j.(string)
+								}
+								if i == "airlineName" {
+									cheapestFlightPtr.airlineName = j.(string)
+								}
+								if i == "airlineCode" {
+									cheapestFlightPtr.airlineCode = j.(string)
+								}
+								if i == "plane" {
+									cheapestFlightPtr.plane = j.(string)
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	fmt.Println(cheapestFlight)
 }
