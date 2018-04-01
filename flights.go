@@ -3,11 +3,18 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"strconv"
 	"time"
 
+	"golang.org/x/net/context"
+
+	firebase "firebase.google.com/go"
+	"firebase.google.com/go/db"
+
 	"github.com/gocolly/colly"
+	"google.golang.org/api/option"
 )
 
 // NoOfDays to look for
@@ -34,8 +41,50 @@ type carrier struct {
 	flightNumber  string
 }
 
+type AirbusType struct {
+	Description string `json:"description,omitempty"`
+	Name        string `json:"name,omitempty"`
+}
+
+type PlaceType struct {
+	Airport string `json:"AIRPORT,omitempty"`
+	City    string `json:"CITY,omitempty"`
+	Iata    string `json:"IATA,omitempty"`
+}
+
+type ArrivalType struct {
+	Place PlaceType `json:"place,omitempty"`
+	Time  string    `json:"time,omitempty"`
+}
+
+type DepartureType struct {
+	Place PlaceType `json:"place,omitempty"`
+	Time  string    `json:"time,omitempty"`
+}
+
+type LayoverType struct {
+	Airbus AirbusType `json:"airbus,omitempty"`
+	End    string     `json:"end,omitempty"`
+	Place  PlaceType  `json:"place,omitempty"`
+	Start  string     `json:"start,omitempty"`
+}
+
+type SingleFlightType struct {
+	Airbus     AirbusType    `json:"airbus,omitempty"`
+	Arrival    ArrivalType   `json:"arrival,omitempty"`
+	AvgPrice   string        `json:"avg_price,omitempty"`
+	Category   string        `json:"category,omitempty"`
+	Connecting bool          `json:"connecting,omitempty"`
+	Date       string        `json:"date,omitempty"`
+	Departure  DepartureType `json:"departure,omitempty"`
+	Layover    LayoverType   `json:"layover,omitempty"`
+	Price      string        `json:"price,omitempty"`
+	URLSlug    string        `json:"url_slug,omitempty"`
+}
+
 func main() {
 
+	DbClient := InitFirebaseDb()
 	t := time.Now()
 	f, _ := os.Create("log" + t.Format("02-01-2006-15-04-05") + ".txt")
 
@@ -63,8 +112,44 @@ func main() {
 		minPrice, avgPrice := minPriceAndDate(prices)
 		fmt.Println("Minimum price for", v.from, "to", v.to, "is", minPrice.price, "on", minPrice.date)
 		fmt.Println("Average price over", NoOfDays, "days is", avgPrice)
-		fetchFlightDetails(v.from, v.to, f, minPrice.date)
+
+		var flightsData carrier
+		var flightsDataPtr *carrier
+		fetchFlightDetails(v.from, v.to, f, minPrice.date, flightsDataPtr)
+		UpdateFlightsData(DbClient, flightsData)
 	}
+
+	// {
+	// 	"airbus" : {
+	// 	  "description" : "A320 6E 361",
+	// 	  "name" : "Indigo"
+	// 	},
+	// 	"arrival" : {
+	// 	  "place" : {
+	// 		"AIRPORT" : "Chhatrapati Shivaji International Airport",
+	// 		"CITY" : "Mumbai",
+	// 		"IATA" : "BOM"
+	// 	  },
+	// 	  "time" : "1970-01-01T11:50:00.000Z"
+	// 	},
+	// 	"avg_price" : "5211",
+	// 	"category" : "-L1xhzfcXqMqeY015iYT",
+	// 	"connecting" : false,
+	// 	"date" : "2018-03-12T18:30:00.000Z",
+	// 	"departure" : {
+	// 	  "place" : {
+	// 		"AIRPORT" : "Kempegowda International Airport",
+	// 		"CITY" : "Bengaluru",
+	// 		"IATA" : "BLR"
+	// 	  },
+	// 	  "time" : "1970-01-01T10:05:00.000Z"
+	// 	},
+	// 	"price" : "1882",
+	// 	"url_slug" : "bengaluru-mumbai"
+	//   }
+
+	// ReadFlightsData(DbClient)
+
 }
 
 func minPriceAndDate(data []priceStruct) (priceStruct, int) {
@@ -74,6 +159,9 @@ func minPriceAndDate(data []priceStruct) (priceStruct, int) {
 	for _, d := range data {
 		if min == 0 {
 			min = d.price
+			priceDate = priceStruct{
+				min, d.date,
+			}
 		}
 		if d.price < min {
 			min = d.price
@@ -180,7 +268,7 @@ func jsonParserPrice(m map[string]interface{}, finalValue *string, fs *os.File) 
 	}
 }
 
-func fetchFlightDetails(from string, to string, log *os.File, date string) {
+func fetchFlightDetails(from string, to string, log *os.File, date string, dataPtr *carrier) {
 	fmt.Println(`************************************************START*****************************************************************	
 	`)
 	fmt.Println("Flight details extraction started!", from, to, date)
@@ -222,7 +310,8 @@ func fetchFlightDetails(from string, to string, log *os.File, date string) {
 			json.Unmarshal(str, &result)
 			data := result.(map[string]interface{})
 			jsonParserDetails(data, l, s, log)
-			CheapestPriceDetails(l, s, log)
+			flightData := CheapestPriceDetails(l, s, log)
+			*dataPtr = flightData
 		})
 	})
 
@@ -289,7 +378,7 @@ func jsonParserDetails(m map[string]interface{}, l *[]interface{}, s *[]interfac
 }
 
 // CheapestPriceDetails ...
-func CheapestPriceDetails(l *[]interface{}, s *[]interface{}, fs *os.File) {
+func CheapestPriceDetails(l *[]interface{}, s *[]interface{}, fs *os.File) carrier {
 	var cheapest interface{}
 	for _, obj := range *s {
 		data := obj.(map[string]interface{})
@@ -382,4 +471,46 @@ func CheapestPriceDetails(l *[]interface{}, s *[]interface{}, fs *os.File) {
 		}
 	}
 	fmt.Println(cheapestFlight)
+	return cheapestFlight
+}
+
+func InitFirebaseDb() *db.Client {
+	opt := option.WithCredentialsFile("serviceAccountKey.json")
+	config := &firebase.Config{DatabaseURL: "https://icfclub-98db1.firebaseio.com/"}
+	app, err := firebase.NewApp(context.Background(), config, opt)
+	if err != nil {
+		fmt.Errorf("error initializing app: %v", err)
+	}
+
+	client, FirbaseClientErr := app.Database(context.Background())
+	if FirbaseClientErr != nil {
+		log.Fatalln("Error initializing database client:", FirbaseClientErr)
+	}
+	return client
+}
+
+func ReadFlightsData(client *db.Client) {
+
+	ref := client.NewRef("/")
+	singleFlightRef := ref.Child("single-flight")
+
+	flights, err2 := singleFlightRef.OrderByKey().GetOrdered(context.Background())
+	if err2 != nil {
+		log.Fatalln("Error getting value:", err2)
+	}
+	snapshot := make([]SingleFlightType, len(flights))
+	for i, r := range flights {
+		var d SingleFlightType
+		if err := r.Unmarshal(&d); err != nil {
+			log.Fatalln("Error unmarshaling result:", err)
+		}
+		fmt.Println(d)
+		snapshot[i] = d
+	}
+	// fmt.Println(snapshot)
+}
+
+func UpdateFlightsData(client *db.Client, data carrier) {
+	fmt.Println("Updating flight info..")
+	fmt.Println(data)
 }
