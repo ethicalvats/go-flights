@@ -12,13 +12,12 @@ import (
 
 	firebase "firebase.google.com/go"
 	"firebase.google.com/go/db"
-
 	"github.com/gocolly/colly"
 	"google.golang.org/api/option"
 )
 
 // NoOfDays to look for
-const NoOfDays int = 7
+const NoOfDays int = 91
 
 type flight struct {
 	from string
@@ -89,8 +88,8 @@ func main() {
 	IST, _ := time.LoadLocation("Asia/Kolkata")
 	f, _ := os.Create("log" + t.Format("02-01-2006-15-04-05") + ".txt")
 
-	cities := [5]string{"BLR", "CCU", "MAA", "DEL", "BOM"}
-	destinations := [2]string{"GOI", "DEL"}
+	cities := [1]string{"BLR"}
+	destinations := [13]string{"DEL", "BOM", "GOI", "CCU", "HYD", "GAU", "PNQ", "IXE", "MAA", "COK", "PAT", "JAI", "AMD"}
 
 	flights := make(map[string]flight)
 	for _, c := range cities {
@@ -133,7 +132,7 @@ func main() {
 			Time: departureTime.UTC().Format("2006-01-02T15:04:05.000Z"),
 		}
 		cheapestFlightAirbus = AirbusType{
-			Name:        flightsData.airlineName + " " +flightsData.airlineCode+" "+ flightsData.flightNumber,
+			Name:        flightsData.airlineName + " " + flightsData.airlineCode + " " + flightsData.flightNumber,
 			Description: flightsData.plane,
 		}
 		cheapestFlight = SingleFlightType{
@@ -145,9 +144,7 @@ func main() {
 			Price:     strconv.Itoa(minPrice.price),
 		}
 
-		if v.from == "BLR" && v.to == "DEL" {
-			UpdateBLRDELFlightData(DbClient, cheapestFlight)
-		}
+		UpdateFlightData(DbClient, cheapestFlight, v)
 	}
 
 	// {
@@ -546,12 +543,44 @@ func ReadFlightsData(client *db.Client) {
 	// fmt.Println(snapshot)
 }
 
-func UpdateBLRDELFlightData(client *db.Client, data SingleFlightType) {
-	fmt.Println("Updating flight info..")
+func UpdateFlightData(client *db.Client, data SingleFlightType, trip flight) {
+	fmt.Println("Updating flight info..", trip)
 	fmt.Println(data)
 
 	ref := client.NewRef("single-flight")
-	flightRef := ref.Child("/-L29O2n5YwVPP38dJ_aJ")
+	var flightRef *db.Ref
+
+	switch trip.from {
+	case "BLR":
+		if trip.to == "DEL" {
+			flightRef = ref.Child("/-L29O2n5YwVPP38dJ_aJ")
+		} else if trip.to == "BOM" {
+			flightRef = ref.Child("/-L29OdjDvwJPLGmk737j")
+		} else if trip.to == "GOI" {
+			flightRef = ref.Child("/-L29P-jd2sYaJca6ZVW8")
+		} else if trip.to == "CCU" {
+			flightRef = ref.Child("/-L29PL0rIQwUibxpfAOs")
+		} else if trip.to == "HYD" {
+			flightRef = ref.Child("/-L29PeEL0yihJjLKGB8_")
+		} else if trip.to == "GAU" {
+			flightRef = ref.Child("/-L29QDyUO1mt--ClQRqz")
+		} else if trip.to == "PNQ" {
+			flightRef = ref.Child("/-L29QXDXnxaWGu42__DQ")
+		} else if trip.to == "IXE" {
+			flightRef = ref.Child("/-L29Qvay9Jv5mRUTS84S")
+		} else if trip.to == "MAA" {
+			flightRef = ref.Child("/-L29Rdbt8mmzgI03uCrJ")
+		} else if trip.to == "COK" {
+			flightRef = ref.Child("/-L29RzxP2caflO4I0WDq")
+		} else if trip.to == "PAT" {
+			flightRef = ref.Child("/-L29SVH-s7icttLWTjKk")
+		} else if trip.to == "JAI" {
+			flightRef = ref.Child("/-L29Syns5haRW5nObtDE")
+		} else if trip.to == "AMD" {
+			flightRef = ref.Child("/-L29TI1oZ6uNyDXNd9HZ")
+		}
+	}
+
 	err := flightRef.Update(context.Background(), map[string]interface{}{
 		"airbus":         data.Airbus,
 		"arrival/time":   data.Arrival.Time,
