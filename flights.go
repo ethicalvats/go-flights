@@ -86,10 +86,11 @@ func main() {
 
 	DbClient := InitFirebaseDb()
 	t := time.Now()
+	IST, _ := time.LoadLocation("Asia/Kolkata")
 	f, _ := os.Create("log" + t.Format("02-01-2006-15-04-05") + ".txt")
 
 	cities := [5]string{"BLR", "CCU", "MAA", "DEL", "BOM"}
-	destinations := [2]string{"GOI", "HYD"}
+	destinations := [2]string{"GOI", "DEL"}
 
 	flights := make(map[string]flight)
 	for _, c := range cities {
@@ -108,15 +109,45 @@ func main() {
 			tt := t.AddDate(0, 0, i)
 			fetchFlightPrices(v.from, v.to, f, tt.Format("02/01/2006"), &prices)
 		}
-		fmt.Println(prices)
+		// fmt.Println(prices)
 		minPrice, avgPrice := minPriceAndDate(prices)
-		fmt.Println("Minimum price for", v.from, "to", v.to, "is", minPrice.price, "on", minPrice.date)
-		fmt.Println("Average price over", NoOfDays, "days is", avgPrice)
+		// fmt.Println("Minimum price for", v.from, "to", v.to, "is", minPrice.price, "on", minPrice.date)
+		// fmt.Println("Average price over", NoOfDays, "days is", avgPrice)
 
 		var flightsData carrier
 		var flightsDataPtr *carrier
+		flightsDataPtr = &flightsData
 		fetchFlightDetails(v.from, v.to, f, minPrice.date, flightsDataPtr)
-		UpdateFlightsData(DbClient, flightsData)
+
+		var cheapestFlight SingleFlightType
+		var cheapestFlightAirbus AirbusType
+		var cheapestFlightArrival ArrivalType
+		var cheapestFlightDeparture DepartureType
+
+		arrivalTime, _ := time.ParseInLocation("02/01/2006 15:04", flightsData.arrivalDate+" "+flightsData.arrivalTime, IST)
+		cheapestFlightArrival = ArrivalType{
+			Time: arrivalTime.UTC().Format("2006-01-02T15:04:05.000Z"),
+		}
+		departureTime, _ := time.ParseInLocation("02/01/2006 15:04", flightsData.departureDate+" "+flightsData.departureTime, IST)
+		cheapestFlightDeparture = DepartureType{
+			Time: departureTime.UTC().Format("2006-01-02T15:04:05.000Z"),
+		}
+		cheapestFlightAirbus = AirbusType{
+			Name:        flightsData.airlineName + " " +flightsData.airlineCode+" "+ flightsData.flightNumber,
+			Description: flightsData.plane,
+		}
+		cheapestFlight = SingleFlightType{
+			Airbus:    cheapestFlightAirbus,
+			Arrival:   cheapestFlightArrival,
+			Departure: cheapestFlightDeparture,
+			AvgPrice:  strconv.Itoa(avgPrice),
+			Date:      departureTime.UTC().Format("2006-01-02T15:04:05.000Z"),
+			Price:     strconv.Itoa(minPrice.price),
+		}
+
+		if v.from == "BLR" && v.to == "DEL" {
+			UpdateBLRDELFlightData(DbClient, cheapestFlight)
+		}
 	}
 
 	// {
@@ -155,6 +186,7 @@ func main() {
 func minPriceAndDate(data []priceStruct) (priceStruct, int) {
 	var min int
 	var sum int
+	var avg int
 	var priceDate priceStruct
 	for _, d := range data {
 		if min == 0 {
@@ -171,7 +203,11 @@ func minPriceAndDate(data []priceStruct) (priceStruct, int) {
 		}
 		sum += d.price
 	}
-	avg := sum/len(data) + 1
+	if sum == 0 {
+		avg = 0
+	} else {
+		avg = sum/len(data) + 1
+	}
 	return priceDate, avg
 }
 
@@ -182,7 +218,7 @@ func fetchFlightPrices(from string, to string, log *os.File, date string, slice 
 
 	c := colly.NewCollector(
 		colly.AllowedDomains("www.expedia.co.in"),
-		colly.CacheDir("./flights_cache"),
+		// colly.CacheDir("./flights_cache"),
 	)
 
 	c.OnRequest(func(r *colly.Request) {
@@ -269,17 +305,17 @@ func jsonParserPrice(m map[string]interface{}, finalValue *string, fs *os.File) 
 }
 
 func fetchFlightDetails(from string, to string, log *os.File, date string, dataPtr *carrier) {
-	fmt.Println(`************************************************START*****************************************************************	
-	`)
-	fmt.Println("Flight details extraction started!", from, to, date)
+	// fmt.Println(`************************************************START*****************************************************************
+	// `)
+	// fmt.Println("Flight details extraction started!", from, to, date)
 
 	c := colly.NewCollector(
 		colly.AllowedDomains("www.expedia.co.in"),
-		colly.CacheDir("./flights_cache"),
+		// colly.CacheDir("./flights_cache"),
 	)
 
 	c.OnRequest(func(r *colly.Request) {
-		fmt.Println("Visiting", r.URL)
+		// fmt.Println("Visiting", r.URL)
 	})
 
 	c.OnError(func(_ *colly.Response, err error) {
@@ -304,7 +340,7 @@ func fetchFlightDetails(from string, to string, log *os.File, date string, dataP
 		// })
 
 		e.ForEach("script#cachedResultsJson", func(_ int, el *colly.HTMLElement) {
-			fmt.Println("Found #flight-listing-container")
+			// fmt.Println("Found #flight-listing-container")
 			str := []byte(el.DOM.Text())
 			var result interface{}
 			json.Unmarshal(str, &result)
@@ -316,9 +352,9 @@ func fetchFlightDetails(from string, to string, log *os.File, date string, dataP
 	})
 
 	c.OnScraped(func(r *colly.Response) {
-		fmt.Println("Finished")
-		fmt.Println(`************************************************END*******************************************************************
-		`)
+		// fmt.Println("Finished")
+		// fmt.Println(`************************************************END*******************************************************************
+		// `)
 	})
 
 	c.Visit("https://www.expedia.co.in/Flights-Search?trip=oneway&leg1=from:" + from + ",to:" + to + ",departure:" + date + "TANYT&passengers=children:0,adults:1,seniors:0,infantinlap:Y&options=cabinclass%3Aeconomy&mode=search&origref=www.expedia.com")
@@ -470,7 +506,7 @@ func CheapestPriceDetails(l *[]interface{}, s *[]interface{}, fs *os.File) carri
 			}
 		}
 	}
-	fmt.Println(cheapestFlight)
+	// fmt.Println(cheapestFlight)
 	return cheapestFlight
 }
 
@@ -510,7 +546,20 @@ func ReadFlightsData(client *db.Client) {
 	// fmt.Println(snapshot)
 }
 
-func UpdateFlightsData(client *db.Client, data carrier) {
+func UpdateBLRDELFlightData(client *db.Client, data SingleFlightType) {
 	fmt.Println("Updating flight info..")
 	fmt.Println(data)
+
+	ref := client.NewRef("single-flight")
+	flightRef := ref.Child("/-L29O2n5YwVPP38dJ_aJ")
+	err := flightRef.Update(context.Background(), map[string]interface{}{
+		"airbus":         data.Airbus,
+		"arrival/time":   data.Arrival.Time,
+		"avg_price":      data.AvgPrice,
+		"date":           data.Date,
+		"departure/time": data.Departure.Time,
+		"price":          data.Price,
+		"connecting":     false,
+	})
+	fmt.Println("Update error", err)
 }
