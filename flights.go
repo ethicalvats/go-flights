@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -82,14 +83,17 @@ type SingleFlightType struct {
 }
 
 func main() {
-
+	citiPtr := flag.String("city", "BLR", "Departure City")
+	flag.Parse()
 	DbClient := InitFirebaseDb()
 	t := time.Now()
 	IST, _ := time.LoadLocation("Asia/Kolkata")
-	f, _ := os.Create("log" + t.Format("02-01-2006-15-04-05") + ".txt")
-
-	cities := [1]string{"BLR"}
-	destinations := [13]string{"DEL", "BOM", "GOI", "CCU", "HYD", "GAU", "PNQ", "IXE", "MAA", "COK", "PAT", "JAI", "AMD"}
+	logPath := "/var/log/flights/" + *citiPtr + t.Format("02-01-2006-15-04") + ".txt"
+	_, fileError := os.Create(logPath)
+	f, fileError := os.OpenFile(logPath, os.O_RDWR, 0644)
+	fmt.Println(fileError)
+	cities := [1]string{*citiPtr} // BLR, DEL, CCU, BOM, MAA
+	destinations := [15]string{"DEL", "BOM", "GOI", "CCU", "HYD", "GAU", "PNQ", "IXE", "MAA", "COK", "PAT", "JAI", "AMD", "BBI", "LKO"}
 
 	flights := make(map[string]flight)
 	for _, c := range cities {
@@ -100,7 +104,8 @@ func main() {
 		}
 	}
 
-	fmt.Println("Date is", t.Local())
+	fmt.Println("Date is", t.Local(), "Departure", *citiPtr)
+	f.WriteString("Date is " + t.Local().String() + " Departure " + *citiPtr)
 	for _, v := range flights {
 		f.WriteString("Flight " + v.from + " " + v.to + "\r\n")
 		var prices []priceStruct
@@ -144,7 +149,7 @@ func main() {
 			Price:     strconv.Itoa(minPrice.price),
 		}
 
-		UpdateFlightData(DbClient, cheapestFlight, v)
+		UpdateFlightData(DbClient, cheapestFlight, v, f)
 	}
 
 	// {
@@ -235,10 +240,6 @@ func fetchFlightPrices(from string, to string, log *os.File, date string, slice 
 
 		var finalPrice string
 		p := &finalPrice
-		// 	var li = jQuery('#flight-listing-container').find('ul#flightModuleList li')
-		// 	li.each(function(i, el){
-		// 	console.log($(el).find('span[data-test-id=listing-price-dollars]').text())
-		// })
 
 		e.ForEach("script#cachedResultsJson", func(_ int, el *colly.HTMLElement) {
 			// fmt.Println("Found #flight-listing-container")
@@ -330,11 +331,6 @@ func fetchFlightDetails(from string, to string, log *os.File, date string, dataP
 		var legs []interface{}
 		s := &superlatives
 		l := &legs
-
-		// 	var li = jQuery('#flight-listing-container').find('ul#flightModuleList li')
-		// 	li.each(function(i, el){
-		// 	console.log($(el).find('span[data-test-id=listing-price-dollars]').text())
-		// })
 
 		e.ForEach("script#cachedResultsJson", func(_ int, el *colly.HTMLElement) {
 			// fmt.Println("Found #flight-listing-container")
@@ -508,7 +504,7 @@ func CheapestPriceDetails(l *[]interface{}, s *[]interface{}, fs *os.File) carri
 }
 
 func InitFirebaseDb() *db.Client {
-	opt := option.WithCredentialsFile("serviceAccountKey.json")
+	opt := option.WithCredentialsFile("/usr/local/ICFClub/serviceAccountKey.json")
 	config := &firebase.Config{DatabaseURL: "https://icfclub-98db1.firebaseio.com/"}
 	app, err := firebase.NewApp(context.Background(), config, opt)
 	if err != nil {
@@ -543,9 +539,9 @@ func ReadFlightsData(client *db.Client) {
 	// fmt.Println(snapshot)
 }
 
-func UpdateFlightData(client *db.Client, data SingleFlightType, trip flight) {
-	fmt.Println("Updating flight info..", trip)
-	fmt.Println(data)
+func UpdateFlightData(client *db.Client, data SingleFlightType, trip flight, fs *os.File) {
+	fs.WriteString("Updating flight info.. " + trip.from + " " + trip.to)
+	fs.WriteString(data.AvgPrice + " " + data.Date + " " + data.Price)
 
 	ref := client.NewRef("single-flight")
 	var flightRef *db.Ref
@@ -578,6 +574,84 @@ func UpdateFlightData(client *db.Client, data SingleFlightType, trip flight) {
 			flightRef = ref.Child("/-L29Syns5haRW5nObtDE")
 		} else if trip.to == "AMD" {
 			flightRef = ref.Child("/-L29TI1oZ6uNyDXNd9HZ")
+		}
+	case "CCU":
+		if trip.to == "DEL" {
+			flightRef = ref.Child("/-L29ZhIhgnhGvKxPW_d9")
+		} else if trip.to == "MAA" {
+			flightRef = ref.Child("/-L29ZxuDKVv9NEaPFKIC")
+		} else if trip.to == "BLR" {
+			flightRef = ref.Child("/-L29_e6dd9msrgv1A9ml")
+		} else if trip.to == "BOM" {
+			flightRef = ref.Child("/-L29aA60jfykFA22KqGR")
+		} else if trip.to == "JAI" {
+			flightRef = ref.Child("/-L29anYJw-p8SqoX3-90")
+		} else if trip.to == "GOI" {
+			flightRef = ref.Child("/-L29bEP-hBT7nyTYbADA")
+		} else if trip.to == "HYD" {
+			flightRef = ref.Child("/-L29bx-Ar7V9B5o2Qpsh")
+		} else if trip.to == "GAU" {
+			flightRef = ref.Child("/-L29clVkeoiOKULW4-or")
+		} else if trip.to == "BBI" {
+			flightRef = ref.Child("/-L29d1Mdt0vyStfpl2Dv")
+		} else if trip.to == "PNQ" {
+			flightRef = ref.Child("/-L29dNqLI0pSJmdXuK90")
+		} else if trip.to == "PAT" {
+			flightRef = ref.Child("/-L29df8myax0zNd_YgLl")
+		} else if trip.to == "AMD" {
+			flightRef = ref.Child("/-L29e5EuSk9TPED4Q_iV")
+		}
+	case "MAA":
+		if trip.to == "DEL" {
+			flightRef = ref.Child("/-L29gOxfU90MAvpuh-q3")
+		} else if trip.to == "BOM" {
+			flightRef = ref.Child("/-L29ggnij7eF6twHCkED")
+		} else if trip.to == "GOI" {
+			flightRef = ref.Child("/-L29P-jd2sYaJca6ZVW8")
+		} else if trip.to == "CCU" {
+			flightRef = ref.Child("/-L29h7ZukFmFTzMQLRYe")
+		} else if trip.to == "BLR" {
+			flightRef = ref.Child("/-L29hVIDmnKbh869eXNm")
+		} else if trip.to == "HYD" {
+			flightRef = ref.Child("/-L29hn-MvWSwOA8Rl2JH")
+		} else if trip.to == "PNQ" {
+			flightRef = ref.Child("/-L29i2eyg1NJwrE19fqE")
+		}
+	case "DEL":
+		if trip.to == "GOI" {
+			flightRef = ref.Child("/-L29kB6SjhgPTPs19Ufn")
+		} else if trip.to == "BOM" {
+			flightRef = ref.Child("/-L29kRaqw20D7xk85cWP")
+		} else if trip.to == "BLR" {
+			flightRef = ref.Child("/-L29kj7lz103h2Ucm51d")
+		} else if trip.to == "MAA" {
+			flightRef = ref.Child("/-L29l3YOwWLa1Zr9qADJ")
+		} else if trip.to == "HYD" {
+			flightRef = ref.Child("/-L29lKl5Iotc7FcGBa3p")
+		} else if trip.to == "LKO" {
+			flightRef = ref.Child("/-L29vlAgdUVoYJuLQahE")
+		} else if trip.to == "PNQ" {
+			flightRef = ref.Child("/-L29w2u1cQTJaWb9vpKg")
+		}
+	case "BOM":
+		if trip.to == "DEL" {
+			flightRef = ref.Child("/-L29wRe0WFr84rbAkmqu")
+		} else if trip.to == "GOI" {
+			flightRef = ref.Child("/-L2AOjAsQx8gage7E46_")
+		} else if trip.to == "CCU" {
+			flightRef = ref.Child("/-L2AP9P9lVZyiix7gGgK")
+		} else if trip.to == "BLR" {
+			flightRef = ref.Child("/-L2APSvH9seFFSi50rXL")
+		} else if trip.to == "IXE" {
+			flightRef = ref.Child("/-L2APlXzjsjd8x1WIney")
+		} else if trip.to == "COK" {
+			flightRef = ref.Child("/-L2AQKxJjzR5TTtWA57V")
+		} else if trip.to == "MAA" {
+			flightRef = ref.Child("/-L2AQaREzvfnDvmHM-DH")
+		} else if trip.to == "HYD" {
+			flightRef = ref.Child("/-L2AQqj_ioZkpEybO-50")
+		} else if trip.to == "JAI" {
+			flightRef = ref.Child("/-L2ARHRzeDu0gamMHcac")
 		}
 	}
 
