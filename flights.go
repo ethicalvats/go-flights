@@ -93,7 +93,7 @@ func main() {
 	f, fileError := os.OpenFile(logPath, os.O_RDWR, 0644)
 	fmt.Println(fileError)
 	cities := [1]string{*citiPtr} // BLR, DEL, CCU, BOM, MAA
-	destinations := [15]string{"DEL", "BOM", "GOI", "CCU", "HYD", "GAU", "PNQ", "IXE", "MAA", "COK", "PAT", "JAI", "AMD", "BBI", "LKO"}
+	destinations := [16]string{"DEL", "BOM", "GOI", "CCU", "HYD", "BLR", "GAU", "PNQ", "IXE", "MAA", "COK", "PAT", "JAI", "AMD", "BBI", "LKO"}
 
 	flights := make(map[string]flight)
 	for _, c := range cities {
@@ -107,7 +107,7 @@ func main() {
 	fmt.Println("Date is", t.Local(), "Departure", *citiPtr)
 	f.WriteString("Date is " + t.Local().String() + " Departure " + *citiPtr)
 	for _, v := range flights {
-		f.WriteString("Flight " + v.from + " " + v.to + "\r\n")
+		// f.WriteString("Flight " + v.from + " " + v.to + "\r\n")
 		var prices []priceStruct
 		for i := 1; i < NoOfDays; i++ {
 			tt := t.AddDate(0, 0, i)
@@ -232,7 +232,7 @@ func fetchFlightPrices(from string, to string, log *os.File, date string, slice 
 	})
 
 	c.OnResponse(func(r *colly.Response) {
-		log.WriteString("Received response " + strconv.Itoa(r.StatusCode) + "\r\n")
+		// log.WriteString("Received response " + strconv.Itoa(r.StatusCode) + "\r\n")
 		// log.WriteString(string(r.Body) + "\r\n")
 	})
 
@@ -250,7 +250,7 @@ func fetchFlightPrices(from string, to string, log *os.File, date string, slice 
 			jsonParserPrice(data, p, log)
 			if len(*p) > 0 {
 				// fmt.Println("Flight price", from, to, date, "is", *p)
-				log.WriteString("price " + date + " is " + *p + "\r\n")
+				// log.WriteString("price " + date + " is " + *p + "\r\n")
 				price, _ := strconv.ParseFloat(*p, 64)
 				*slice = append(*slice, priceStruct{
 					int(price), date,
@@ -321,7 +321,7 @@ func fetchFlightDetails(from string, to string, log *os.File, date string, dataP
 	})
 
 	c.OnResponse(func(r *colly.Response) {
-		log.WriteString("Received response " + strconv.Itoa(r.StatusCode) + "\r\n")
+		// log.WriteString("Received response " + strconv.Itoa(r.StatusCode) + "\r\n")
 		// log.WriteString(string(r.Body) + "\r\n")
 	})
 
@@ -540,8 +540,10 @@ func ReadFlightsData(client *db.Client) {
 }
 
 func UpdateFlightData(client *db.Client, data SingleFlightType, trip flight, fs *os.File) {
-	fs.WriteString("Updating flight info.. " + trip.from + " " + trip.to)
-	fs.WriteString(data.AvgPrice + " " + data.Date + " " + data.Price)
+	fmt.Println("Updating flight", trip)
+	fmt.Println(data)
+	fs.WriteString("Updating flight info.. " + trip.from + " " + trip.to + "\r\n")
+	fs.WriteString(data.AvgPrice + " " + data.Date + " " + data.Price + "\r\n")
 
 	ref := client.NewRef("single-flight")
 	var flightRef *db.Ref
@@ -574,6 +576,8 @@ func UpdateFlightData(client *db.Client, data SingleFlightType, trip flight, fs 
 			flightRef = ref.Child("/-L29Syns5haRW5nObtDE")
 		} else if trip.to == "AMD" {
 			flightRef = ref.Child("/-L29TI1oZ6uNyDXNd9HZ")
+		} else {
+			return
 		}
 	case "CCU":
 		if trip.to == "DEL" {
@@ -600,6 +604,8 @@ func UpdateFlightData(client *db.Client, data SingleFlightType, trip flight, fs 
 			flightRef = ref.Child("/-L29df8myax0zNd_YgLl")
 		} else if trip.to == "AMD" {
 			flightRef = ref.Child("/-L29e5EuSk9TPED4Q_iV")
+		} else {
+			return
 		}
 	case "MAA":
 		if trip.to == "DEL" {
@@ -616,6 +622,8 @@ func UpdateFlightData(client *db.Client, data SingleFlightType, trip flight, fs 
 			flightRef = ref.Child("/-L29hn-MvWSwOA8Rl2JH")
 		} else if trip.to == "PNQ" {
 			flightRef = ref.Child("/-L29i2eyg1NJwrE19fqE")
+		} else {
+			return
 		}
 	case "DEL":
 		if trip.to == "GOI" {
@@ -632,6 +640,8 @@ func UpdateFlightData(client *db.Client, data SingleFlightType, trip flight, fs 
 			flightRef = ref.Child("/-L29vlAgdUVoYJuLQahE")
 		} else if trip.to == "PNQ" {
 			flightRef = ref.Child("/-L29w2u1cQTJaWb9vpKg")
+		} else {
+			return
 		}
 	case "BOM":
 		if trip.to == "DEL" {
@@ -652,7 +662,11 @@ func UpdateFlightData(client *db.Client, data SingleFlightType, trip flight, fs 
 			flightRef = ref.Child("/-L2AQqj_ioZkpEybO-50")
 		} else if trip.to == "JAI" {
 			flightRef = ref.Child("/-L2ARHRzeDu0gamMHcac")
+		} else {
+			return
 		}
+	default:
+		return
 	}
 
 	err := flightRef.Update(context.Background(), map[string]interface{}{
